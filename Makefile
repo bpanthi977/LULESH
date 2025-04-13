@@ -17,6 +17,7 @@ SOURCES2.0 = \
 	lulesh-comm.cc \
 	lulesh-viz.cc \
 	lulesh-util.cc \
+	performanceTimers.cc \
 	lulesh-init.cc
 OBJECTS2.0 = $(SOURCES2.0:.cc=.o)
 
@@ -42,7 +43,7 @@ LDFLAGS = -g -O3 -fopenmp
 #CXXFLAGS = -g -DVIZ_MESH -I${SILO_INCDIR} -Wall -Wno-pragmas
 #LDFLAGS = -g -L${SILO_LIBDIR} -Wl,-rpath -Wl,${SILO_LIBDIR} -lsiloh5 -lhdf5
 
-.cc.o: lulesh.h
+.cc.o: lulesh.h performanceTimers.h
 	@echo "Building $<"
 	$(CXX) -c $(CXXFLAGS) -o $@  $<
 

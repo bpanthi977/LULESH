@@ -1223,6 +1223,7 @@ void CalcPositionForNodes(Domain &domain, const Real_t dt, Index_t numNode)
 static inline
 void LagrangeNodal(Domain& domain)
 {
+
 #ifdef SEDOV_SYNC_POS_VEL_EARLY
    Domain_member fieldData[6] ;
 #endif
@@ -1232,7 +1233,10 @@ void LagrangeNodal(Domain& domain)
 
   /* time of boundary condition evaluation is beginning of step for force and
    * acceleration boundary conditions. */
+
+  profileStart(TH_calcForceForNodes);
   CalcForceForNodes(domain);
+  profileStop(TH_calcForceForNodes);
 
 #if USE_MPI  
 #ifdef SEDOV_SYNC_POS_VEL_EARLY
@@ -1241,14 +1245,23 @@ void LagrangeNodal(Domain& domain)
             false, false) ;
 #endif
 #endif
-   
+
+   profileStart(TH_calcAccForNodes);
    CalcAccelerationForNodes(domain, domain.numNode());
-   
+   profileStop(TH_calcAccForNodes);
+
+   profileStart(TH_applyAccBC);
    ApplyAccelerationBoundaryConditionsForNodes(domain);
+   profileStop(TH_applyAccBC);
 
+   profileStart(TH_calcVelForNodes);
    CalcVelocityForNodes( domain, delt, u_cut, domain.numNode()) ;
+   profileStop(TH_calcVelForNodes);
 
+   profileStart(TH_calcPosForNodes);
    CalcPositionForNodes( domain, delt, domain.numNode() );
+   profileStop(TH_calcPosForNodes);
+
 #if USE_MPI
 #ifdef SEDOV_SYNC_POS_VEL_EARLY
   fieldData[0] = &Domain::x ;
@@ -2431,15 +2444,23 @@ void UpdateVolumesForElems(Domain &domain,
 static inline
 void LagrangeElements(Domain& domain, Index_t numElem)
 {
+  profileStart(TH_calcLagrangeElements);
   CalcLagrangeElements(domain) ;
+  profileStop(TH_calcLagrangeElements);
 
   /* Calculate Q.  (Monotonic q option requires communication) */
+  profileStart(TH_calcQForElems);
   CalcQForElems(domain) ;
+  profileStop(TH_calcQForElems);
 
+  profileStart(TH_applyMaterialProp);
   ApplyMaterialPropertiesForElems(domain) ;
+  profileStop(TH_applyMaterialProp);
 
+  profileStart(TH_updateVolForElems);
   UpdateVolumesForElems(domain, 
                         domain.v_cut(), numElem) ;
+  profileStop(TH_updateVolForElems);
 }
 
 /******************************************/
@@ -2606,7 +2627,9 @@ void LagrangeLeapFrog(Domain& domain)
 
    /* calculate nodal forces, accelerations, velocities, positions, with
     * applied boundary conditions and slide surface considerations */
+   profileStart(TH_lagrangeNodal);
    LagrangeNodal(domain);
+   profileStop(TH_lagrangeNodal);
 
 
 #ifdef SEDOV_SYNC_POS_VEL_LATE
@@ -2614,7 +2637,9 @@ void LagrangeLeapFrog(Domain& domain)
 
    /* calculate element quantities (i.e. velocity gradient & q), and update
     * material states */
+   profileStart(TH_lagrangeElements);
    LagrangeElements(domain, domain.numElem());
+   profileStop(TH_lagrangeElements);
 
 #if USE_MPI   
 #ifdef SEDOV_SYNC_POS_VEL_LATE
@@ -2635,7 +2660,9 @@ void LagrangeLeapFrog(Domain& domain)
 #endif
 #endif   
 
+   profileStart(TH_calcTimeConstraintsForElems);
    CalcTimeConstraintsForElems(domain);
+   profileStop(TH_calcTimeConstraintsForElems);
 
 #if USE_MPI   
 #ifdef SEDOV_SYNC_POS_VEL_LATE
@@ -2742,10 +2769,15 @@ int main(int argc, char *argv[])
 //debug to see region sizes
 //   for(Int_t i = 0; i < locDom->numReg(); i++)
 //      std::cout << "region" << i + 1<< "size" << locDom->regElemSize(i) <<std::endl;
+   profileStart(TH_loop);
    while((locDom->time() < locDom->stoptime()) && (locDom->cycle() < opts.its)) {
 
+      profileStart(TH_timestep);
       TimeIncrement(*locDom) ;
+
       LagrangeLeapFrog(*locDom) ;
+      profileStop(TH_timestep);
+
 
       if ((opts.showProg != 0) && (opts.quiet == 0) && (myRank == 0)) {
          std::cout << "cycle = " << locDom->cycle()       << ", "
@@ -2755,6 +2787,7 @@ int main(int argc, char *argv[])
          std::cout.unsetf(std::ios_base::floatfield);
       }
    }
+   profileStop(TH_loop);
 
    // Use reduced max elapsed time
    double elapsed_time;
@@ -2787,6 +2820,8 @@ int main(int argc, char *argv[])
 #if USE_MPI
    MPI_Finalize() ;
 #endif
+
+   printPerformanceResults();
 
    return 0 ;
 }
