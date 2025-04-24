@@ -1223,6 +1223,8 @@ void CalcPositionForNodes(Domain &domain, const Real_t dt, Index_t numNode)
 static inline
 void LagrangeNodal(Domain& domain)
 {
+   profileStart(TH_lagrangeNodal);
+
 #ifdef SEDOV_SYNC_POS_VEL_EARLY
    Domain_member fieldData[6] ;
 #endif
@@ -1277,6 +1279,7 @@ void LagrangeNodal(Domain& domain)
 #endif
 #endif
    
+  profileStop(TH_lagrangeNodal);
   return;
 }
 
@@ -2617,6 +2620,71 @@ void CalcTimeConstraintsForElems(Domain& domain) {
 
 /******************************************/
 
+typedef struct {
+  double x;
+  double y;
+  double z;
+  double xd;
+  double yd;
+  double zd;
+  double nodalMass;
+} ln_node_input;
+
+typedef struct {
+  double q;
+  double volo;
+  double v;
+  double elemMass;
+  double ss;
+} ln_elem_input;
+
+typedef struct {
+  // Main node is connected (belongs to) to 8 elements
+  ln_node_input main_node;
+  ln_node_input elems_other_nodes[8][7];  // 7 nodes of the 8 elements
+  ln_elem_input elems[8]; // 8 elements 
+} ln_input;
+
+// Output is node properties
+typedef struct {
+  double x;
+  double y;
+  double z;
+  double xd;
+  double yd;
+  double zd;
+} ln_output; 
+
+void setNodeValue(Domain& domain, int i, ln_node_input* input) {
+  input->x = domain.x(i);
+  input->y = domain.y(i);
+  input->z = domain.z(i);
+  input->xd = domain.xd(i);
+  input->yd = domain.yd(i);
+  input->zd = domain.zd(i);
+  input->nodalMass = domain.nodalMass(i);
+}
+
+void setNodeElemValue(Domain& domain, int i, ln_elem_input* input) {
+  input->q = domain.q(i);
+  input->volo = domain.volo(i);
+  input->v = domain.v(i);
+  input->elemMass = domain.elemMass(i);
+  input->ss = domain.ss(i);
+}
+
+void setNodeNeighbours(Domain& domain, int node_i, Index_t* node_idxs, ln_node_input* input) {
+  int count = 0;
+  for (int k=0; k<8; k++) {
+    Index_t node_idx = node_idxs[k];
+    if (node_idx == node_i) {
+      continue;
+    }
+    setNodeValue(domain, node_i, &input[count]);
+    count++;
+  }
+}
+
 static inline
 void LagrangeLeapFrog(Domain& domain)
 {
@@ -2626,10 +2694,98 @@ void LagrangeLeapFrog(Domain& domain)
 
    /* calculate nodal forces, accelerations, velocities, positions, with
     * applied boundary conditions and slide surface considerations */
-   profileStart(TH_lagrangeNodal);
-   LagrangeNodal(domain);
-   profileStop(TH_lagrangeNodal);
+#if defined(COLLECT_NODAL) || defined(INFER)
+   profileStart(TH_lagrangeNodal_approx);
+   profileStart(TH_ln_aprx_prep);
+   ln_input *input = (ln_input*) malloc(sizeof(ln_input) * domain.m_numNode);
+   int input_rows = domain.m_numNode;
+   int input_cols = sizeof(ln_input) / sizeof(double);
+   
+   int *elemFillCount = (int*)calloc(domain.m_numNode, sizeof(int));
+#pragma omp parallel for 
+   for (int i=0; i<domain.m_numNode; i++) {
+     setNodeValue(domain, i, &input[i].main_node);
+   }
 
+#pragma omp parallel for
+   for (int elem_i=0; elem_i<domain.m_numElem; elem_i++) { // elements
+     for (int j=0; j<8; j++) { // nodes of the element i
+       int node_j = domain.nodelist(elem_i)[j];
+       int elem_offset = elemFillCount[node_j];
+       setNodeNeighbours(domain, node_j, domain.nodelist(elem_i), input[node_j].elems_other_nodes[elem_offset]);
+       setNodeElemValue(domain, elem_i, &input[node_j].elems[elem_offset]); 
+       elemFillCount[node_j]++;
+     }
+   }
+   // Nodes: x, y, z, xd, yd, zd, nodalMass
+   // Elements: domain.volo , domain.v, domain.elemMass,  domain.ss, domain.q
+   // Output is x,y,z, xd, yd, zd for nodes
+   double* input_cast = (double*) input;
+
+   int N = domain.m_numNode;
+   double *nx = domain.m_x.data();
+   double *ny = domain.m_y.data();
+   double *nz = domain.m_z.data();
+   double *ndx = domain.m_xd.data();
+   double *ndy = domain.m_yd.data();
+   double *ndz = domain.m_zd.data();
+   double *output = (double*) malloc(sizeof(double) * N * 6);
+   profileStop(TH_ln_aprx_prep);
+#pragma approx declare tensor_functor(identity_map_2d: [i,j] = ([i,j]))
+#pragma approx declare tensor_functor(out_map: [i, 0:6] = ([i], [i], [i],[i],[i],[i]))
+#pragma approx declare tensor(inp: identity_map_2d(input_cast[0:input_rows, 0:input_cols]))
+#ifdef COLLECT_NODAL
+#pragma approx ml(offline) in(inp) out(identity_map_2d(output[0:N, 0:6])) label("LagrangeNodal")
+#endif
+#ifdef INFER
+#pragma approx ml(infer) in(inp) out(identity_map_2d(output[0:N, 0:6])) label("LagrangeNodal")
+#endif
+#endif   
+   {
+#ifdef COLLECT_NODAL
+   profileStop(TH_lagrangeNodal_approx);
+#endif
+   LagrangeNodal(domain);
+#ifdef COLLECT_NODAL
+   double *o = output;
+   for (int i=0; i<N; i++) {
+      (*o++) = nx[i];
+      (*o++) = ny[i];
+      (*o++) = nz[i];
+      (*o++) = ndx[i];
+      (*o++) = ndy[i];
+      (*o++) = ndz[i];
+   }
+#endif
+}
+#ifdef INFER
+   profileStop(TH_lagrangeNodal_approx);
+
+   printf("size: %zu\n", domain.m_x.size());
+   printf("size: %zu\n", domain.m_y.size());
+   printf("size: %zu\n", domain.m_z.size());
+   printf("size: %zu\n", domain.m_xd.size());
+   printf("size: %zu\n", domain.m_yd.size());
+   printf("size: %zu\n", domain.m_zd.size());
+   printf("N: %d\n", N);
+
+   double *o = output;
+   for (int i=0; i<N; i++) {
+     nx[i] = *o; o++;
+     ny[i] = *o; o++;
+     nz[i] = *o; o++;
+     ndx[i] = *o; o++;
+     ndy[i] = *o; o++;
+     ndz[i] = *o; o++;
+   }
+#endif
+#if defined(COLLECT_NODAL) || defined(INFER)
+   free(output);
+   free(input);
+   free(elemFillCount);
+#endif
+ 
+   
 
 #ifdef SEDOV_SYNC_POS_VEL_LATE
 #endif

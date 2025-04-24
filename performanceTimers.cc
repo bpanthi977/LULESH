@@ -102,6 +102,8 @@ static void timerStats(void);
 char* timerName[numberOfTimers] = {
   "total,",
   "timestep",
+  "  lagrangeNodal_approx",
+  "    ln_approx_prep",
   "  lagrangeNodal",
   "    calcForceForNodes",
   "    calcAccForNodes",

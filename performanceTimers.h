@@ -9,6 +9,8 @@
 enum TimerHandle{
    TH_loop,
    TH_timestep,
+   TH_lagrangeNodal_approx,
+   TH_ln_aprx_prep,
    TH_lagrangeNodal,
    TH_calcForceForNodes,
    TH_calcAccForNodes,
