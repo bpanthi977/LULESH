@@ -643,3 +643,43 @@ void CommMonoQ(Domain& domain);
 // lulesh-init
 void InitMeshDecomp(Int_t numRanks, Int_t myRank,
                     Int_t *col, Int_t *row, Int_t *plane, Int_t *side);
+
+// approx
+typedef struct {
+  double x;
+  double y;
+  double z;
+  double xd;
+  double yd;
+  double zd;
+  double nodalMass;
+} ln_node_input;
+
+typedef struct {
+  double q;
+  double volo;
+  double v;
+  double elemMass;
+  double ss;
+} ln_elem_input;
+
+typedef struct {
+  // Main node is connected (belongs to) to 8 elements
+  ln_node_input main_node;
+  ln_node_input elems_other_nodes[8][7];  // 7 nodes of the 8 elements
+  ln_elem_input elems[8]; // 8 elements 
+} ln_input;
+
+// Output is node properties
+typedef struct {
+  double x;
+  double y;
+  double z;
+  double xd;
+  double yd;
+  double zd;
+} ln_output; 
+
+void setNodeValue(Domain& domain, int i, ln_node_input* input);
+void setNodeElemValue(Domain& domain, int i, ln_elem_input* input);
+void setNodeNeighbours(Domain& domain, int node_i, Index_t* node_idxs, ln_node_input* input);

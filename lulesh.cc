@@ -1219,6 +1219,58 @@ void CalcPositionForNodes(Domain &domain, const Real_t dt, Index_t numNode)
 }
 
 /******************************************/
+void collectForceOutput(Domain& domain, double *output) {
+  int N = domain.m_numNode;
+   double *fx = domain.m_fx.data();
+   double *fy = domain.m_fy.data();
+   double *fz = domain.m_fz.data();
+   
+   double *o = output;
+   for (int i=0; i<N; i++) {
+      (*o++) = fx[i];
+      (*o++) = fy[i];
+      (*o++) = fz[i];
+   }
+}
+
+void updateForceOutputState(Domain& domain, double *output) {
+  int N = domain.m_numNode;
+  double *o = output;
+   double *fx = domain.m_fx.data();
+   double *fy = domain.m_fy.data();
+   double *fz = domain.m_fz.data();
+
+   for (int i=0; i<N; i++) {
+     fx[i] = *o; o++;
+     fy[i] = *o; o++;
+     fz[i] = *o; o++;
+   }
+}
+
+double *prepNodalInput(Domain& domain) {
+   profileStart(TH_ln_aprx_prep);
+   ln_input *input = (ln_input*) malloc(sizeof(ln_input) * domain.m_numNode);
+   
+   int *elemFillCount = (int*)calloc(domain.m_numNode, sizeof(int));
+#pragma omp parallel for 
+   for (int i=0; i<domain.m_numNode; i++) {
+     setNodeValue(domain, i, &input[i].main_node);
+   }
+
+#pragma omp parallel for
+   for (int elem_i=0; elem_i<domain.m_numElem; elem_i++) { // elements
+     for (int j=0; j<8; j++) { // nodes of the element i
+       int node_j = domain.nodelist(elem_i)[j];
+       int elem_offset = elemFillCount[node_j];
+       setNodeNeighbours(domain, node_j, domain.nodelist(elem_i), input[node_j].elems_other_nodes[elem_offset]);
+       setNodeElemValue(domain, elem_i, &input[node_j].elems[elem_offset]); 
+       elemFillCount[node_j]++;
+     }
+   }
+
+   profileStop(TH_ln_aprx_prep);
+   return (double *) input;
+}
 
 static inline
 void LagrangeNodal(Domain& domain)
@@ -1236,7 +1288,33 @@ void LagrangeNodal(Domain& domain)
    * acceleration boundary conditions. */
 
   profileStart(TH_calcForceForNodes);
+
+#if defined(COLLECT_FORCE) || defined(INFER_FORCE)
+  double *input = prepNodalInput(domain);
+  int N = domain.m_numNode;
+  int input_cols = sizeof(ln_input) / sizeof(double);
+  double *output = (double *) malloc(sizeof(double) * N * 3);
+
+#pragma approx declare tensor_functor(identity_map_2d: [i,j] = ([i,j]))
+#pragma approx declare tensor(inp: identity_map_2d(input[0:N, 0:input_cols]))
+#endif
+  
+#ifdef COLLECT_FORCE
+#pragma approx ml(offline) in(inp) out(identity_map_2d(output[0:N, 0:3])) label("CalcForceForNodes")
+#endif
+#ifdef INFER_FORCE  
+#pragma approx ml(infer) in(inp) out(identity_map_2d(output[0:N, 0:3]))
+#endif
+  {
   CalcForceForNodes(domain);
+  #ifdef COLLECT_FORCE
+  collectForceOutput(domain, output);
+  #endif
+  }
+  #ifdef INFER_FORCE
+  updateForceOutputState(domain, output);
+  #endif
+  
   profileStop(TH_calcForceForNodes);
 
 #if USE_MPI  
@@ -2620,40 +2698,6 @@ void CalcTimeConstraintsForElems(Domain& domain) {
 
 /******************************************/
 
-typedef struct {
-  double x;
-  double y;
-  double z;
-  double xd;
-  double yd;
-  double zd;
-  double nodalMass;
-} ln_node_input;
-
-typedef struct {
-  double q;
-  double volo;
-  double v;
-  double elemMass;
-  double ss;
-} ln_elem_input;
-
-typedef struct {
-  // Main node is connected (belongs to) to 8 elements
-  ln_node_input main_node;
-  ln_node_input elems_other_nodes[8][7];  // 7 nodes of the 8 elements
-  ln_elem_input elems[8]; // 8 elements 
-} ln_input;
-
-// Output is node properties
-typedef struct {
-  double x;
-  double y;
-  double z;
-  double xd;
-  double yd;
-  double zd;
-} ln_output; 
 
 void setNodeValue(Domain& domain, int i, ln_node_input* input) {
   input->x = domain.x(i);
@@ -2685,68 +2729,18 @@ void setNodeNeighbours(Domain& domain, int node_i, Index_t* node_idxs, ln_node_i
   }
 }
 
-static inline
-void LagrangeLeapFrog(Domain& domain)
-{
-#ifdef SEDOV_SYNC_POS_VEL_LATE
-   Domain_member fieldData[6] ;
-#endif
-
-   /* calculate nodal forces, accelerations, velocities, positions, with
-    * applied boundary conditions and slide surface considerations */
-#if defined(COLLECT_NODAL) || defined(INFER)
-   profileStart(TH_lagrangeNodal_approx);
-   profileStart(TH_ln_aprx_prep);
-   ln_input *input = (ln_input*) malloc(sizeof(ln_input) * domain.m_numNode);
-   int input_rows = domain.m_numNode;
-   int input_cols = sizeof(ln_input) / sizeof(double);
-   
-   int *elemFillCount = (int*)calloc(domain.m_numNode, sizeof(int));
-#pragma omp parallel for 
-   for (int i=0; i<domain.m_numNode; i++) {
-     setNodeValue(domain, i, &input[i].main_node);
-   }
-
-#pragma omp parallel for
-   for (int elem_i=0; elem_i<domain.m_numElem; elem_i++) { // elements
-     for (int j=0; j<8; j++) { // nodes of the element i
-       int node_j = domain.nodelist(elem_i)[j];
-       int elem_offset = elemFillCount[node_j];
-       setNodeNeighbours(domain, node_j, domain.nodelist(elem_i), input[node_j].elems_other_nodes[elem_offset]);
-       setNodeElemValue(domain, elem_i, &input[node_j].elems[elem_offset]); 
-       elemFillCount[node_j]++;
-     }
-   }
+void collectNodalOutput(Domain& domain, double *output) {
    // Nodes: x, y, z, xd, yd, zd, nodalMass
    // Elements: domain.volo , domain.v, domain.elemMass,  domain.ss, domain.q
    // Output is x,y,z, xd, yd, zd for nodes
-   double* input_cast = (double*) input;
-
-   int N = domain.m_numNode;
+    int N = domain.m_numNode;
    double *nx = domain.m_x.data();
    double *ny = domain.m_y.data();
    double *nz = domain.m_z.data();
    double *ndx = domain.m_xd.data();
    double *ndy = domain.m_yd.data();
    double *ndz = domain.m_zd.data();
-   double *output = (double*) malloc(sizeof(double) * N * 6);
-   profileStop(TH_ln_aprx_prep);
-#pragma approx declare tensor_functor(identity_map_2d: [i,j] = ([i,j]))
-#pragma approx declare tensor_functor(out_map: [i, 0:6] = ([i], [i], [i],[i],[i],[i]))
-#pragma approx declare tensor(inp: identity_map_2d(input_cast[0:input_rows, 0:input_cols]))
-#ifdef COLLECT_NODAL
-#pragma approx ml(offline) in(inp) out(identity_map_2d(output[0:N, 0:6])) label("LagrangeNodal")
-#endif
-#ifdef INFER
-#pragma approx ml(infer) in(inp) out(identity_map_2d(output[0:N, 0:6])) label("LagrangeNodal")
-#endif
-#endif   
-   {
-#ifdef COLLECT_NODAL
-   profileStop(TH_lagrangeNodal_approx);
-#endif
-   LagrangeNodal(domain);
-#ifdef COLLECT_NODAL
+   
    double *o = output;
    for (int i=0; i<N; i++) {
       (*o++) = nx[i];
@@ -2756,20 +2750,18 @@ void LagrangeLeapFrog(Domain& domain)
       (*o++) = ndy[i];
       (*o++) = ndz[i];
    }
-#endif
 }
-#ifdef INFER
-   profileStop(TH_lagrangeNodal_approx);
 
-   printf("size: %zu\n", domain.m_x.size());
-   printf("size: %zu\n", domain.m_y.size());
-   printf("size: %zu\n", domain.m_z.size());
-   printf("size: %zu\n", domain.m_xd.size());
-   printf("size: %zu\n", domain.m_yd.size());
-   printf("size: %zu\n", domain.m_zd.size());
-   printf("N: %d\n", N);
+void updateNodalOutputState(Domain& domain, double *output) {
+  double *o = output;
+  int N = domain.m_numNode;
+   double *nx = domain.m_x.data();
+   double *ny = domain.m_y.data();
+   double *nz = domain.m_z.data();
+   double *ndx = domain.m_xd.data();
+   double *ndy = domain.m_yd.data();
+   double *ndz = domain.m_zd.data();
 
-   double *o = output;
    for (int i=0; i<N; i++) {
      nx[i] = *o; o++;
      ny[i] = *o; o++;
@@ -2778,8 +2770,49 @@ void LagrangeLeapFrog(Domain& domain)
      ndy[i] = *o; o++;
      ndz[i] = *o; o++;
    }
+}
+
+static inline
+void LagrangeLeapFrog(Domain& domain)
+{
+#ifdef SEDOV_SYNC_POS_VEL_LATE
+   Domain_member fieldData[6] ;
 #endif
-#if defined(COLLECT_NODAL) || defined(INFER)
+
+   /* calculate nodal forces, accelerations, velocities, positions, with
+    * applied boundary conditions and slide surface considerations */
+#if defined(COLLECT_NODAL) || defined(INFER_NODAL)
+   profileStart(TH_lagrangeNodal_approx);
+   double* input = prepNodalInput(domain);
+   int N = domain.m_numNode;
+   int input_cols = sizeof(ln_input) / sizeof(double);
+   double *output = (double*) malloc(sizeof(double) * N * 6);
+
+
+#pragma approx declare tensor_functor(identity_map_2d: [i,j] = ([i,j]))
+#pragma approx declare tensor(inp: identity_map_2d(input[0:N, 0:input_cols]))
+#ifdef COLLECT_NODAL
+#pragma approx ml(offline) in(inp) out(identity_map_2d(output[0:N, 0:6])) label("LagrangeNodal")
+#endif
+#ifdef INFER_NODAL
+#pragma approx ml(infer) in(inp) out(identity_map_2d(output[0:N, 0:6])) label("LagrangeNodal")
+#endif
+#endif   
+   {
+#ifdef COLLECT_NODAL
+   profileStop(TH_lagrangeNodal_approx);
+#endif
+   LagrangeNodal(domain);
+#ifdef COLLECT_NODAL
+   collectNodalOutput(domain, output);
+#endif
+}
+#ifdef INFER_NODAL
+   profileStop(TH_lagrangeNodal_approx);
+   updateNodalOutputState(domain, output);
+#endif
+   
+#if defined(COLLECT_NODAL) || defined(INFER_NODAL)
    free(output);
    free(input);
    free(elemFillCount);
