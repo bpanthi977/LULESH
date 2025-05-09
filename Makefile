@@ -30,8 +30,9 @@ LDFLAGS = -g -O3 -fopenmp -lapprox
 #LDFLAGS = -g -O3 
 
 #common places you might find silo on the Livermore machines.
-#SILO_INCDIR = /opt/local/include
-#SILO_LIBDIR = /opt/local/lib
+SILO_SPACK = $(HOME)/Silo/spack/.spack-env/view/
+SILO_INCDIR = $(SILO_SPACK)/include
+SILO_LIBDIR = $(SILO_SPACK)/lib
 #SILO_INCDIR = ./silo/4.9/1.8.10.1/include
 #SILO_LIBDIR = ./silo/4.9/1.8.10.1/lib
 
@@ -41,7 +42,7 @@ LDFLAGS = -g -O3 -fopenmp -lapprox
 
 #below is and example of how to make with silo, hdf5 to get vizulization by default all this is turned off.  All paths are Livermore specific.
 #CXXFLAGS = -g -DVIZ_MESH -I${SILO_INCDIR} -Wall -Wno-pragmas
-#LDFLAGS = -g -L${SILO_LIBDIR} -Wl,-rpath -Wl,${SILO_LIBDIR} -lsiloh5 -lhdf5
+#LDFLAGS = -g -L${SILO_LIBDIR} -Wl,-rpath -Wl,${SILO_LIBDIR} -lsiloh5 -fopenmp -lomp
 
 .cc.o: lulesh.h performanceTimers.h
 	@echo "Building $<"
