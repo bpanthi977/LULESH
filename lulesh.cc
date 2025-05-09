@@ -160,6 +160,7 @@ Additional BSD Notice
 #endif
 
 #include "lulesh.h"
+#include "approx.h"
 
 /* Work Routines */
 
@@ -1235,7 +1236,7 @@ void LagrangeNodal(Domain& domain)
    * acceleration boundary conditions. */
 
   profileStart(TH_calcForceForNodes);
-  CalcForceForNodes(domain);
+  wrap_approx(APPROX_FN_CAST(CalcForceForNodes), &domain, Config_CalcForceForNodes);
   profileStop(TH_calcForceForNodes);
 
 #if USE_MPI  

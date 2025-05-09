@@ -13,6 +13,7 @@ MPICXX = mpig++ -DUSE_MPI=1
 CXX = $(MPICXX)
 
 SOURCES2.0 = \
+	approx.cc \
 	lulesh.cc \
 	lulesh-comm.cc \
 	lulesh-viz.cc \
