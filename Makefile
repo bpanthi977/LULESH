@@ -8,9 +8,9 @@ LULESH_EXEC = lulesh2.0
 MPI_INC = /opt/local/include/openmpi
 MPI_LIB = /opt/local/lib
 
-SERCXX = g++ -DUSE_MPI=0
+SERCXX = clang++ -DUSE_MPI=0
 MPICXX = mpig++ -DUSE_MPI=1
-CXX = $(MPICXX)
+CXX = $(SERCXX)
 
 SOURCES2.0 = \
 	approx.cc \
@@ -23,8 +23,8 @@ SOURCES2.0 = \
 OBJECTS2.0 = $(SOURCES2.0:.cc=.o)
 
 #Default build suggestions with OpenMP for g++
-CXXFLAGS = -g -O3 -fopenmp -I. -Wall
-LDFLAGS = -g -O3 -fopenmp
+CXXFLAGS = -g -O3 -fopenmp -I. -Wall -fapprox
+LDFLAGS = -g -O3 -fopenmp -lapprox
 
 #Below are reasonable default flags for a serial build
 #CXXFLAGS = -g -O3 -I. -Wall
