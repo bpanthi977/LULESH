@@ -4,3 +4,11 @@
 /ml/
 /ml/.venv
 /ml/venv
+/.vscode/
+/README.md
+/build/
+/dataset/
+/lulesh2.0-collect-06
+/lulesh2.0-model
+/lulesh_plot_c1
+/notes.org
