@@ -518,46 +518,48 @@ void IntegrateStressForElems( Domain &domain,
      fz_elem = Allocate<Real_t>(numElem8) ;
   }
 
- Real_t (*aB)[3][8] = (double (*)[3][8]) malloc(sizeof(double) * numElem * 3 * 8);
- Real_t (*ax_local)[8] = (double (*)[8]) malloc(sizeof(double) * numElem * 8);
- Real_t (*ay_local)[8] = (double (*)[8]) malloc(sizeof(double) * numElem * 8);
- Real_t (*az_local)[8] = (double (*)[8]) malloc(sizeof(double) * numElem * 8);
 
+ Real_t (*aoutput)[25] = (double (*)[25]) malloc(sizeof(double) * numElem * 25);
+ Real_t (*ainput)[3][8] = (double (*)[3][8])malloc(sizeof(double) * numElem * 24);
 
 #pragma omp parallel for firstprivate(numElem)
   for( Index_t k=0 ; k<numElem ; ++k )
     {
     const Index_t* const elemToNode = domain.nodelist(k);
-    Real_t *x_local = ax_local[k];
-    Real_t *y_local = ay_local[k];
-    Real_t *z_local = az_local[k];
+    Real_t *x_local = ainput[k][0];
+    Real_t *y_local = ainput[k][1];
+    Real_t *z_local = ainput[k][2];
 
     // get nodal coordinates from global arrays and copy into local arrays.
     CollectDomainNodesToElemNodes(domain, elemToNode, x_local, y_local, z_local);
     }
 
+  {
 #pragma omp parallel for firstprivate(numElem)
-  for( Index_t k=0 ; k<numElem ; ++k )
-    {
-    Real_t (*B)[8] = aB[k];
-    Real_t *x_local = ax_local[k];
-    Real_t *y_local = ay_local[k];
-    Real_t *z_local = az_local[k];
+    for( Index_t k=0 ; k<numElem ; ++k )
+      {
+	Real_t (*B)[8] = (double (*)[8]) &aoutput[k][1];
+	Real_t *determ_temp = &aoutput[k][0];
+    Real_t *x_local = ainput[k][0];
+    Real_t *y_local = ainput[k][1];
+    Real_t *z_local = ainput[k][2];
 
-    // Volume calculation involves extra work for numerical consistency
-    CalcElemShapeFunctionDerivatives(x_local, y_local, z_local,
-					 B, &determ[k]);
+	// Volume calculation involves extra work for numerical consistency
+	CalcElemShapeFunctionDerivatives(x_local, y_local, z_local,
+					 B, determ_temp);
+	determ[k] = *determ_temp;
 
+      }
   }
 
   #pragma omp parallel for firstprivate(numElem)
   for( Index_t k=0 ; k<numElem ; ++k )
     {
     const Index_t* const elemToNode = domain.nodelist(k);
-    Real_t (*B)[8] = aB[k];
-    Real_t *x_local = ax_local[k];
-    Real_t *y_local = ay_local[k];
-    Real_t *z_local = az_local[k];
+	Real_t (*B)[8] = (double (*)[8]) &aoutput[k][1];
+    Real_t *x_local = ainput[k][0];
+    Real_t *y_local = ainput[k][1];
+    Real_t *z_local = ainput[k][2];
 
     CalcElemNodeNormals( B[0] , B[1], B[2],
 			  x_local, y_local, z_local );
@@ -610,10 +612,8 @@ void IntegrateStressForElems( Domain &domain,
      Release(&fx_elem) ;
   }
 
-  free(aB);
-  free(ax_local);
-  free(ay_local);
-  free(az_local);
+  free(ainput);
+  free(aoutput);
 }
 
 /******************************************/
