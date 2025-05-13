@@ -517,45 +517,69 @@ void IntegrateStressForElems( Domain &domain,
      fy_elem = Allocate<Real_t>(numElem8) ;
      fz_elem = Allocate<Real_t>(numElem8) ;
   }
-  // loop over all elements
+
+ Real_t (*aB)[3][8] = (double (*)[3][8]) malloc(sizeof(double) * numElem * 3 * 8);
+ Real_t (*ax_local)[8] = (double (*)[8]) malloc(sizeof(double) * numElem * 8);
+ Real_t (*ay_local)[8] = (double (*)[8]) malloc(sizeof(double) * numElem * 8);
+ Real_t (*az_local)[8] = (double (*)[8]) malloc(sizeof(double) * numElem * 8);
+
 
 #pragma omp parallel for firstprivate(numElem)
   for( Index_t k=0 ; k<numElem ; ++k )
-  {
+    {
     const Index_t* const elemToNode = domain.nodelist(k);
-    Real_t B[3][8] ;// shape function derivatives
-    Real_t x_local[8] ;
-    Real_t y_local[8] ;
-    Real_t z_local[8] ;
+    Real_t *x_local = ax_local[k];
+    Real_t *y_local = ay_local[k];
+    Real_t *z_local = az_local[k];
 
     // get nodal coordinates from global arrays and copy into local arrays.
     CollectDomainNodesToElemNodes(domain, elemToNode, x_local, y_local, z_local);
+    }
+
+#pragma omp parallel for firstprivate(numElem)
+  for( Index_t k=0 ; k<numElem ; ++k )
+    {
+    Real_t (*B)[8] = aB[k];
+    Real_t *x_local = ax_local[k];
+    Real_t *y_local = ay_local[k];
+    Real_t *z_local = az_local[k];
 
     // Volume calculation involves extra work for numerical consistency
     CalcElemShapeFunctionDerivatives(x_local, y_local, z_local,
-                                         B, &determ[k]);
+					 B, &determ[k]);
+
+  }
+
+  #pragma omp parallel for firstprivate(numElem)
+  for( Index_t k=0 ; k<numElem ; ++k )
+    {
+    const Index_t* const elemToNode = domain.nodelist(k);
+    Real_t (*B)[8] = aB[k];
+    Real_t *x_local = ax_local[k];
+    Real_t *y_local = ay_local[k];
+    Real_t *z_local = az_local[k];
 
     CalcElemNodeNormals( B[0] , B[1], B[2],
-                          x_local, y_local, z_local );
+			  x_local, y_local, z_local );
 
     if (numthreads > 1) {
        // Eliminate thread writing conflicts at the nodes by giving
        // each element its own copy to write to
        SumElemStressesToNodeForces( B, sigxx[k], sigyy[k], sigzz[k],
-                                    &fx_elem[k*8],
-                                    &fy_elem[k*8],
-                                    &fz_elem[k*8] ) ;
+				    &fx_elem[k*8],
+				    &fy_elem[k*8],
+				    &fz_elem[k*8] ) ;
     }
     else {
        SumElemStressesToNodeForces( B, sigxx[k], sigyy[k], sigzz[k],
-                                    fx_local, fy_local, fz_local ) ;
+				    fx_local, fy_local, fz_local ) ;
 
        // copy nodal force contributions to global force arrray.
        for( Index_t lnode=0 ; lnode<8 ; ++lnode ) {
-          Index_t gnode = elemToNode[lnode];
-          domain.fx(gnode) += fx_local[lnode];
-          domain.fy(gnode) += fy_local[lnode];
-          domain.fz(gnode) += fz_local[lnode];
+	  Index_t gnode = elemToNode[lnode];
+	  domain.fx(gnode) += fx_local[lnode];
+	  domain.fy(gnode) += fy_local[lnode];
+	  domain.fz(gnode) += fz_local[lnode];
        }
     }
   }
@@ -566,25 +590,30 @@ void IntegrateStressForElems( Domain &domain,
 #pragma omp parallel for firstprivate(numNode)
      for( Index_t gnode=0 ; gnode<numNode ; ++gnode )
      {
-        Index_t count = domain.nodeElemCount(gnode) ;
-        Index_t *cornerList = domain.nodeElemCornerList(gnode) ;
-        Real_t fx_tmp = Real_t(0.0) ;
-        Real_t fy_tmp = Real_t(0.0) ;
-        Real_t fz_tmp = Real_t(0.0) ;
-        for (Index_t i=0 ; i < count ; ++i) {
-           Index_t ielem = cornerList[i] ;
-           fx_tmp += fx_elem[ielem] ;
-           fy_tmp += fy_elem[ielem] ;
-           fz_tmp += fz_elem[ielem] ;
-        }
-        domain.fx(gnode) = fx_tmp ;
-        domain.fy(gnode) = fy_tmp ;
-        domain.fz(gnode) = fz_tmp ;
+	Index_t count = domain.nodeElemCount(gnode) ;
+	Index_t *cornerList = domain.nodeElemCornerList(gnode) ;
+	Real_t fx_tmp = Real_t(0.0) ;
+	Real_t fy_tmp = Real_t(0.0) ;
+	Real_t fz_tmp = Real_t(0.0) ;
+	for (Index_t i=0 ; i < count ; ++i) {
+	   Index_t ielem = cornerList[i] ;
+	   fx_tmp += fx_elem[ielem] ;
+	   fy_tmp += fy_elem[ielem] ;
+	   fz_tmp += fz_elem[ielem] ;
+	}
+	domain.fx(gnode) = fx_tmp ;
+	domain.fy(gnode) = fy_tmp ;
+	domain.fz(gnode) = fz_tmp ;
      }
      Release(&fz_elem) ;
      Release(&fy_elem) ;
      Release(&fx_elem) ;
   }
+
+  free(aB);
+  free(ax_local);
+  free(ay_local);
+  free(az_local);
 }
 
 /******************************************/
