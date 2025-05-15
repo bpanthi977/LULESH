@@ -104,6 +104,7 @@ const char* timerName[numberOfTimers] = {
   "timestep",
   "  lagrangeNodal",
   "    calcForceForNodes",
+  "       calcElemSFD",
   "    calcAccForNodes",
   "    applyAccBC",
   "    calcVelForNodes",

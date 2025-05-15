@@ -534,6 +534,20 @@ void IntegrateStressForElems( Domain &domain,
     CollectDomainNodesToElemNodes(domain, elemToNode, x_local, y_local, z_local);
     }
 
+    profileStart(TH_calcElemSFD);
+  
+#ifdef SFD_COLLECT
+#pragma approx declare tensor_functor(identity_map_2d: [i,j] = ([i,j]))
+#pragma approx declare tensor(inp: identity_map_2d(ainput[0:numElem][0:24]))
+#pragma approx ml(offline) in(inp) out(identity_map_2d(aoutput[0:numElem][0:25])) label("CaclElemShapeFunctionDerivatives")
+#endif
+  
+#ifdef SFD_INFER
+  printf("infering\n");
+#pragma approx declare tensor_functor(identity_map_2d: [i,j] = ([i,j]))
+#pragma approx declare tensor(inp: identity_map_2d(ainput[0:numElem][0:24]))
+#pragma approx ml(infer) in(inp) out(identity_map_2d(aoutput[0:numElem][0:25])) model("/home/bp0110/model_search/logs/sfd-01/20250514-125316/model.pt")
+#endif
   {
 #pragma omp parallel for firstprivate(numElem)
     for( Index_t k=0 ; k<numElem ; ++k )
@@ -548,10 +562,20 @@ void IntegrateStressForElems( Domain &domain,
 	CalcElemShapeFunctionDerivatives(x_local, y_local, z_local,
 					 B, determ_temp);
 	determ[k] = *determ_temp;
-
       }
   }
+  profileStop(TH_calcElemSFD);
 
+  #ifdef SFD_INFER
+  {
+#pragma omp parallel for firstprivate(numElem)
+    for( Index_t k=0 ; k<numElem ; ++k )
+      {
+	determ[k] = aoutput[k][0];
+      }
+  }
+  #endif
+  
   #pragma omp parallel for firstprivate(numElem)
   for( Index_t k=0 ; k<numElem ; ++k )
     {
