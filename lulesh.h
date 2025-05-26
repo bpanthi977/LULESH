@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <vector>
+#include <assert.h>
 #include "performanceTimers.h"
 
 //**************************************************

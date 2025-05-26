@@ -546,7 +546,7 @@ void IntegrateStressForElems( Domain &domain,
   printf("infering\n");
 #pragma approx declare tensor_functor(identity_map_2d: [i,j] = ([i,j]))
 #pragma approx declare tensor(inp: identity_map_2d(ainput[0:numElem][0:24]))
-#pragma approx ml(infer) in(inp) out(identity_map_2d(aoutput[0:numElem][0:25])) model("/home/bp0110/model_search/logs/sfd-01/20250514-125316/model.pt")
+#pragma approx ml(infer) in(inp) out(identity_map_2d(aoutput[0:numElem][0:25])) model("/mnt/SharedOne/bpanthi/model_search/logs/sfd-01/20250515-111723/model.pt")
 #endif
   {
 #pragma omp parallel for firstprivate(numElem)
@@ -761,6 +761,12 @@ void CalcElemFBHourglassForce(Real_t *xd, Real_t *yd, Real_t *zd,  Real_t hourga
 
 /******************************************/
 
+typedef struct {
+     Real_t x;
+     Real_t y;
+     Real_t z;
+} XYZ;
+
 static inline
 void CalcFBHourglassForceForElems( Domain &domain,
                                    Real_t *determ,
@@ -784,15 +790,41 @@ void CalcFBHourglassForceForElems( Domain &domain,
   
    Index_t numElem8 = numElem * 8 ;
 
-   Real_t *fx_elem; 
-   Real_t *fy_elem; 
-   Real_t *fz_elem; 
+   XYZ *f_elem;
+
+   Real_t *xd8;
+   Real_t *yd8;
+   Real_t *zd8;
+   Real_t *coeff;
 
    if(numthreads > 1) {
-      fx_elem = Allocate<Real_t>(numElem8) ;
-      fy_elem = Allocate<Real_t>(numElem8) ;
-      fz_elem = Allocate<Real_t>(numElem8) ;
+      f_elem = Allocate<XYZ>(numElem8);
    }
+
+#if defined(HGF_COLLECT) || defined(HGF_INFER)
+   if (numthreads == 1) {
+     assert("Needs to be multithreaded for COLLECT or INFER.");
+   }
+   xd8 = Allocate<Real_t>(numElem8);
+   yd8 = Allocate<Real_t>(numElem8);
+   zd8 = Allocate<Real_t>(numElem8);
+   coeff = Allocate<Real_t>(numElem);
+
+#pragma omp parallel for firstprivate(numElem)
+   for (Index_t i=0; i<numElem; ++i) {
+     const Index_t *elemToNode = domain.nodelist(i);
+     for (Index_t node_i=0; node_i<8; ++node_i) {
+       Index_t node_idx = elemToNode[node_i];
+       xd8[i*8 + node_i] = domain.xd(node_idx);
+       yd8[i*8 + node_i] = domain.yd(node_idx);
+       yd8[i*8 + node_i] = domain.zd(node_idx);
+     }
+     Real_t ss1=domain.ss(i);
+     Real_t mass1=domain.elemMass(i);
+     Real_t volume13=CBRT(determ[i]);
+     coeff[i] = - hourg * Real_t(0.01) * ss1 * mass1 / volume13;
+   }
+#endif
 
    Real_t  gamma[4][8];
 
@@ -832,11 +864,38 @@ void CalcFBHourglassForceForElems( Domain &domain,
 /*************************************************/
 /*    compute the hourglass modes */
 
+// input: 74
+// x8n, y8n, z8n    = coordinates of 8 nodes of an element (8*3)
+// dvdx, dvdy, dvdz = volume derivatives of the element (8*3)
+// xd8, yd8, zd8    = velocities of 8 nodes of an element (8*3)
+// coeff            = coefficient that takes hourg, ss, and volume^{1/3} (1)
+// determ          = volume of the element (1)
 
+// output: 24
+// fx_elem, fy_elem, fz_elem = force for 8 nodes of an element
+
+#ifdef HGF_COLLECT
+   int N = numElem;
+#pragma approx declare tensor_functor(ipmap: [i, 0:74] = ([i,_],   [i, _],  [i, _], \
+							 [i,_], [i, _], [i, _], \
+							 [i,_], [i, _], [i, _], \
+							 [i],                         \
+							 [i]))
+#pragma approx declare tensor_functor(outmap: [i, _] = ([i, _]))
+#pragma approx declare tensor(input: ipmap(      \
+ x8n [0:N, 0:8], y8n [0:N, 0:8], z8n [0:N, 0:8], \
+ dvdx[0:N, 0:8], dvdy[0:N, 0:8], dvdz[0:N, 0:8], \
+ xd8 [0:N, 0:8], yd8 [0:N, 0:8], zd8 [0:N, 0:8], \
+ coeff [0:N],                                    \
+ determ[0:N]))
+   Real_t *forces = (Real_t*) f_elem;
+#pragma approx ml(offline) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF")
+
+#endif
+   {
 #pragma omp parallel for firstprivate(numElem, hourg)
    for(Index_t i2=0;i2<numElem;++i2){
-      Real_t *fx_local, *fy_local, *fz_local ;
-      Real_t hgfx[8], hgfy[8], hgfz[8] ;
+       Real_t hgfx[8], hgfy[8], hgfz[8] ;
 
       Real_t coefficient;
 
@@ -847,7 +906,9 @@ void CalcFBHourglassForceForElems( Domain &domain,
       Index_t i3=8*i2;
       Real_t volinv=Real_t(1.0)/determ[i2];
       Real_t ss1, mass1, volume13 ;
-      for(Index_t i1=0;i1<4;++i1){
+
+      // compute hourgam using coordinates, gamma, and volume
+      for(Index_t i1=0;i1<4;++i1) {
 
          Real_t hourmodx =
             x8n[i3] * gamma[i1][0] + x8n[i3+1] * gamma[i1][1] +
@@ -953,35 +1014,33 @@ void CalcFBHourglassForceForElems( Domain &domain,
       // With the threaded version, we write into local arrays per elem
       // so we don't have to worry about race conditions
       if (numthreads > 1) {
-         fx_local = &fx_elem[i3] ;
-         fx_local[0] = hgfx[0];
-         fx_local[1] = hgfx[1];
-         fx_local[2] = hgfx[2];
-         fx_local[3] = hgfx[3];
-         fx_local[4] = hgfx[4];
-         fx_local[5] = hgfx[5];
-         fx_local[6] = hgfx[6];
-         fx_local[7] = hgfx[7];
+	 XYZ *f_local = &f_elem[i3];
+         f_local[0].x = hgfx[0];
+         f_local[1].x = hgfx[1];
+         f_local[2].x = hgfx[2];
+         f_local[3].x = hgfx[3];
+         f_local[4].x = hgfx[4];
+         f_local[5].x = hgfx[5];
+         f_local[6].x = hgfx[6];
+         f_local[7].x = hgfx[7];
 
-         fy_local = &fy_elem[i3] ;
-         fy_local[0] = hgfy[0];
-         fy_local[1] = hgfy[1];
-         fy_local[2] = hgfy[2];
-         fy_local[3] = hgfy[3];
-         fy_local[4] = hgfy[4];
-         fy_local[5] = hgfy[5];
-         fy_local[6] = hgfy[6];
-         fy_local[7] = hgfy[7];
+         f_local[0].y = hgfy[0];
+         f_local[1].y = hgfy[1];
+         f_local[2].y = hgfy[2];
+         f_local[3].y = hgfy[3];
+         f_local[4].y = hgfy[4];
+         f_local[5].y = hgfy[5];
+         f_local[6].y = hgfy[6];
+         f_local[7].y = hgfy[7];
 
-         fz_local = &fz_elem[i3] ;
-         fz_local[0] = hgfz[0];
-         fz_local[1] = hgfz[1];
-         fz_local[2] = hgfz[2];
-         fz_local[3] = hgfz[3];
-         fz_local[4] = hgfz[4];
-         fz_local[5] = hgfz[5];
-         fz_local[6] = hgfz[6];
-         fz_local[7] = hgfz[7];
+         f_local[0].z = hgfz[0];
+         f_local[1].z = hgfz[1];
+         f_local[2].z = hgfz[2];
+         f_local[3].z = hgfz[3];
+         f_local[4].z = hgfz[4];
+         f_local[5].z = hgfz[5];
+         f_local[6].z = hgfz[6];
+         f_local[7].z = hgfz[7];
       }
       else {
          domain.fx(n0si2) += hgfx[0];
@@ -1017,6 +1076,7 @@ void CalcFBHourglassForceForElems( Domain &domain,
          domain.fz(n7si2) += hgfz[7];
       }
    }
+   }
 
    if (numthreads > 1) {
      // Collect the data from the local arrays into the final force arrays
@@ -1030,18 +1090,22 @@ void CalcFBHourglassForceForElems( Domain &domain,
          Real_t fz_tmp = Real_t(0.0) ;
          for (Index_t i=0 ; i < count ; ++i) {
             Index_t ielem = cornerList[i] ;
-            fx_tmp += fx_elem[ielem] ;
-            fy_tmp += fy_elem[ielem] ;
-            fz_tmp += fz_elem[ielem] ;
+            fx_tmp += f_elem[ielem].x ;
+            fy_tmp += f_elem[ielem].y ;
+            fz_tmp += f_elem[ielem].z ;
          }
          domain.fx(gnode) += fx_tmp ;
          domain.fy(gnode) += fy_tmp ;
          domain.fz(gnode) += fz_tmp ;
       }
-      Release(&fz_elem) ;
-      Release(&fy_elem) ;
-      Release(&fx_elem) ;
+      Release(&f_elem);
    }
+#if defined(HGF_COLLECT) || defined(HGF_INFER)
+   Release(&xd8);
+   Release(&yd8);
+   Release(&zd8);
+   Release(&coeff);
+#endif
 }
 
 /******************************************/

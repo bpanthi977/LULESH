@@ -23,8 +23,8 @@ SOURCES2.0 = \
 OBJECTS2.0 = $(SOURCES2.0:.cc=.o)
 
 #Default build suggestions with OpenMP for g++
-CXXFLAGS = -g -O3 -fopenmp -I. -Wall -fapprox
-LDFLAGS = -g -O3 -fopenmp -lapprox
+CXXFLAGS = -g -O3 -gdwarf-4 -fopenmp -I. -Wall -fapprox
+LDFLAGS = -g -O3 -gdwarf-4 -fopenmp -lapprox
 
 #Below are reasonable default flags for a serial build
 #CXXFLAGS = -g -O3 -I. -Wall
