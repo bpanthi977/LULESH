@@ -12,6 +12,7 @@ enum TimerHandle{
    TH_lagrangeNodal,
    TH_calcForceForNodes,
    TH_calcElemSFD,
+   TH_calcFBHGF4Elems,
    TH_calcAccForNodes,
    TH_applyAccBC,
    TH_calcVelForNodes,

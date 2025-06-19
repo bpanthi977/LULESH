@@ -874,7 +874,7 @@ void CalcFBHourglassForceForElems( Domain &domain,
 // output: 24
 // fx_elem, fy_elem, fz_elem = force for 8 nodes of an element
 
-#ifdef HGF_COLLECT
+#if defined(HGF_COLLECT) || defined(HGF_INFER)
    int N = numElem;
 #pragma approx declare tensor_functor(ipmap: [i, 0:74] = ([i,_],   [i, _],  [i, _], \
 							 [i,_], [i, _], [i, _], \
@@ -889,8 +889,12 @@ void CalcFBHourglassForceForElems( Domain &domain,
  coeff [0:N],                                    \
  determ[0:N]))
    Real_t *forces = (Real_t*) f_elem;
-#pragma approx ml(offline) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF")
-
+#ifdef HGF_COLLECT
+  #pragma approx ml(offline) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF")
+#endif
+#ifdef HGF_INFER
+  #pragma approx ml(infer) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF")
+#endif
 #endif
    {
 #pragma omp parallel for firstprivate(numElem, hourg)
@@ -1159,9 +1163,11 @@ void CalcHourglassControlForElems(Domain& domain,
    }
 
    if ( hgcoef > Real_t(0.) ) {
+     profileStart(TH_calcFBHGF4Elems);
       CalcFBHourglassForceForElems( domain,
                                     determ, x8n, y8n, z8n, dvdx, dvdy, dvdz,
                                     hgcoef, numElem, domain.numNode()) ;
+     profileStop(TH_calcFBHGF4Elems);
    }
 
    Release(&z8n) ;
