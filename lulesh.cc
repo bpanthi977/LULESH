@@ -1048,6 +1048,10 @@ void CalcFBHourglassForceForElems( Domain &domain,
          f_local[7].z = hgfz[7];
       }
       else {
+#ifdef HGF_COLLECT
+	std::cerr << "Output data won't be collected this way!!" << std::endl;
+	exit(1);
+#endif
          domain.fx(n0si2) += hgfx[0];
          domain.fy(n0si2) += hgfy[0];
          domain.fz(n0si2) += hgfz[0];
