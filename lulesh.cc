@@ -154,6 +154,7 @@ Additional BSD Notice
 #include <sys/time.h>
 #include <iostream>
 #include <unistd.h>
+#include <cstdlib>
 
 #if _OPENMP
 # include <omp.h>
@@ -1161,6 +1162,30 @@ void CalcHourglassControlForElems(Domain& domain,
 #endif
       }
    }
+
+#ifdef EVD_COLLECT
+   double random_value = static_cast<double>(std::rand()) / (RAND_MAX + 1.0);
+   if (random_value < 0.5) {
+     Real_t *out = Allocate<Real_t>(numElem8 * 3);
+#pragma omp parallel for
+     for (Index_t i=0; i<numElem; ++i) {
+       for (Index_t j=0; j<8; ++j){
+	 Index_t ii3 = 24 * i;
+	 Index_t jj1 = 8 * i + j;
+	 out[ii3 + j] = dvdx[jj1];
+	 out[ii3 + 8 + j] = dvdy[jj1];
+	 out[ii3 + 16 + j] = dvdz[jj1];
+       }
+     }
+
+#pragma approx declare tensor_functor(i3_map: [i, _] = ([i, _], [i, _], [i, _]))
+#pragma approx declare tensor(input: i3_map(x8n[0:numElem][0:8], y8n[0:numElem][0:8], z8n[0:numElem][0:8]))
+
+#pragma approx declare tensor_functor(i1_map: [i, _] = ([i, _]))
+#pragma approx ml(offline) in(input) out(i1_map(out[0:numElem][0:24])) label("EVD")
+     Release(&out);
+   }
+#endif
 
    if ( hgcoef > Real_t(0.) ) {
      profileStart(TH_calcFBHGF4Elems);
@@ -2800,6 +2825,7 @@ void LagrangeLeapFrog(Domain& domain)
 
 int main(int argc, char *argv[])
 {
+  std::srand(static_cast<unsigned int>(42));
    Domain *locDom ;
    int numRanks ;
    int myRank ;
