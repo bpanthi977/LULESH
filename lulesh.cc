@@ -818,7 +818,7 @@ void CalcFBHourglassForceForElems( Domain &domain,
        Index_t node_idx = elemToNode[node_i];
        xd8[i*8 + node_i] = domain.xd(node_idx);
        yd8[i*8 + node_i] = domain.yd(node_idx);
-       yd8[i*8 + node_i] = domain.zd(node_idx);
+       zd8[i*8 + node_i] = domain.zd(node_idx);
      }
      Real_t ss1=domain.ss(i);
      Real_t mass1=domain.elemMass(i);
