@@ -1091,7 +1091,7 @@ void CalcFBHourglassForceForElems( Domain &domain,
      // Collect the data from the local arrays into the final force arrays
 #pragma omp parallel for firstprivate(numNode)
       for( Index_t gnode=0 ; gnode<numNode ; ++gnode )
-      {
+	{
          Index_t count = domain.nodeElemCount(gnode) ;
          Index_t *cornerList = domain.nodeElemCornerList(gnode) ;
          Real_t fx_tmp = Real_t(0.0) ;
@@ -1140,16 +1140,17 @@ void CalcHourglassControlForElems(Domain& domain,
 
       Index_t* elemToNode = domain.nodelist(i);
       CollectDomainNodesToElemNodes(domain, elemToNode, x1, y1, z1);
-
+#ifndef EVD_INFER
       CalcElemVolumeDerivative(pfx, pfy, pfz, x1, y1, z1);
-
+#endif
       /* load into temporary storage for FB Hour Glass control */
       for(Index_t ii=0;ii<8;++ii){
          Index_t jj=8*i+ii;
-
+#ifndef EVD_INFER
          dvdx[jj] = pfx[ii];
          dvdy[jj] = pfy[ii];
          dvdz[jj] = pfz[ii];
+#endif
          x8n[jj]  = x1[ii];
          y8n[jj]  = y1[ii];
          z8n[jj]  = z1[ii];
@@ -1167,29 +1168,46 @@ void CalcHourglassControlForElems(Domain& domain,
       }
    }
 
-#ifdef EVD_COLLECT
-   double random_value = static_cast<double>(std::rand()) / (RAND_MAX + 1.0);
-   if (random_value < 0.5) {
-     Real_t *out = Allocate<Real_t>(numElem8 * 3);
-#pragma omp parallel for
-     for (Index_t i=0; i<numElem; ++i) {
-       for (Index_t j=0; j<8; ++j){
-	 Index_t ii3 = 24 * i;
-	 Index_t jj1 = 8 * i + j;
-	 out[ii3 + j] = dvdx[jj1];
-	 out[ii3 + 8 + j] = dvdy[jj1];
-	 out[ii3 + 16 + j] = dvdz[jj1];
-       }
-     }
-
+#if defined(EVD_COLLECT) || defined(EVD_INFER)
 #pragma approx declare tensor_functor(i3_map: [i, _] = ([i, _], [i, _], [i, _]))
 #pragma approx declare tensor(input: i3_map(x8n[0:numElem][0:8], y8n[0:numElem][0:8], z8n[0:numElem][0:8]))
-
 #pragma approx declare tensor_functor(i1_map: [i, _] = ([i, _]))
-#pragma approx ml(offline) in(input) out(i1_map(out[0:numElem][0:24])) label("EVD")
-     Release(&out);
+
+     Real_t *out = Allocate<Real_t>(numElem8 * 3);
+#ifdef EVD_COLLECT
+#pragma omp parallel for
+   for (Index_t i=0; i<numElem; ++i) {
+     for (Index_t j=0; j<8; ++j){
+       Index_t ii3 = 8 * 3 * i;
+       Index_t jj1 = 8 * i + j;
+       out[ii3 + j] = dvdx[jj1];
+       out[ii3 + 8 + j] = dvdy[jj1];
+       out[ii3 + 16 + j] = dvdz[jj1];
+     }
+   }
+   #pragma approx ml(offline) in(input) out(i1_map(out[0:numElem][0:24])) label("EVD")
+   {
    }
 #endif
+
+#ifdef EVD_INFER
+#pragma approx ml(infer) in(input) out(i1_map(out[0:numElem][0:24])) label("EVD")
+   {
+   }
+#pragma omp parallel for
+   for (Index_t i=0; i<numElem; ++i) {
+     for (Index_t j=0; j<8; ++j){
+       Index_t ii3 = 8 * 3 * i;
+       Index_t jj1 = 8 * i + j;
+       dvdx[jj1] = out[ii3 + j];
+       dvdy[jj1] = out[ii3 + 8 + j];
+       dvdz[jj1] = out[ii3 + 16 + j];
+     }
+   }
+#endif
+     Release(&out);
+#endif
+
 
    if ( hgcoef > Real_t(0.) ) {
      profileStart(TH_calcFBHGF4Elems);
