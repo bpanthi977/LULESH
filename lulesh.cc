@@ -2924,6 +2924,14 @@ int main(int argc, char *argv[])
 //   for(Int_t i = 0; i < locDom->numReg(); i++)
 //      std::cout << "region" << i + 1<< "size" << locDom->regElemSize(i) <<std::endl;
    profileStart(TH_loop);
+#ifdef E_ALL
+   FILE *f = fopen("Energy.bin", "wb");
+   if (!f) {
+    printf("Couldn't open file (Energy.bin) to save energy values\n");
+    exit(1);
+   }
+#endif
+
    while((locDom->time() < locDom->stoptime()) && (locDom->cycle() < opts.its)) {
 
       profileStart(TH_timestep);
@@ -2932,6 +2940,10 @@ int main(int argc, char *argv[])
       LagrangeLeapFrog(*locDom) ;
       profileStop(TH_timestep);
 
+#ifdef E_ALL
+      int n_dims[3] = {opts.nx, opts.nx, opts.nx};
+      WriteArrayToFile(f, locDom->m_e.data(), n_dims, 3);
+#endif
 
       if ((opts.showProg != 0) && (opts.quiet == 0) && (myRank == 0)) {
          std::cout << "cycle = " << locDom->cycle()       << ", "
@@ -2943,6 +2955,9 @@ int main(int argc, char *argv[])
    }
    profileStop(TH_loop);
 
+#ifdef E_ALL
+   fclose(f);
+#endif
    // Use reduced max elapsed time
    double elapsed_time;
 #if USE_MPI   

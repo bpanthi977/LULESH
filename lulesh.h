@@ -621,6 +621,7 @@ Real_t CalcElemVolume( const Real_t x[8],
 // lulesh-util
 void ParseCommandLineOptions(int argc, char *argv[],
                              Int_t myRank, struct cmdLineOpts *opts);
+void WriteArrayToFile(FILE *f, double* arr, int* dims, int n_dims);
 void VerifyAndWriteFinalOutput(Real_t elapsed_time,
                                Domain& locDom,
                                Int_t nx,

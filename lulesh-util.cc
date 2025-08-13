@@ -170,6 +170,17 @@ void ParseCommandLineOptions(int argc, char *argv[],
    }
 }
 
+void WriteArrayToFile(FILE *f, double* arr, int* dims, int n_dims) {
+  int64_t total_size = 1;
+  fwrite(&n_dims, sizeof(int), 1, f);
+  fwrite(dims, sizeof(int), n_dims, f);
+  for (int i=0; i<n_dims; i++) {
+    total_size *= dims[i];
+  }
+
+  fwrite(arr, sizeof(double), total_size, f);
+}
+
 /////////////////////////////////////////////////////////////////////
 
 void VerifyAndWriteFinalOutput(Real_t elapsed_time,
@@ -196,7 +207,8 @@ void VerifyAndWriteFinalOutput(Real_t elapsed_time,
 
    Real_t   MaxAbsDiff = Real_t(0.0);
    Real_t TotalAbsDiff = Real_t(0.0);
-   Real_t   MaxRelDiff = Real_t(0.0);
+   Real_t MaxRelDiff = Real_t(0.0);
+   Real_t  ModMaxRelDiff = Real_t(0.0);
 
    for (Index_t j=0; j<nx; ++j) {
       for (Index_t k=j+1; k<nx; ++k) {
@@ -208,6 +220,9 @@ void VerifyAndWriteFinalOutput(Real_t elapsed_time,
          Real_t RelDiff = AbsDiff / locDom.e(k*nx+j);
 
          if (MaxRelDiff <RelDiff)  MaxRelDiff = RelDiff;
+
+	 Real_t ModRelDiff = AbsDiff / (locDom.e(k*nx+j) + 1e-3);
+	 if (ModMaxRelDiff < ModRelDiff) ModMaxRelDiff = ModRelDiff;
       }
    }
 
@@ -216,6 +231,7 @@ void VerifyAndWriteFinalOutput(Real_t elapsed_time,
    std::cout << "        MaxAbsDiff   = " << std::setw(12) << MaxAbsDiff   << "\n";
    std::cout << "        TotalAbsDiff = " << std::setw(12) << TotalAbsDiff << "\n";
    std::cout << "        MaxRelDiff   = " << std::setw(12) << MaxRelDiff   << "\n";
+   std::cout << "ModifiedMaxRelDiff   = " << std::setw(12) << ModMaxRelDiff   << "\n";
 
    // Timing information
    std::cout.unsetf(std::ios_base::floatfield);
