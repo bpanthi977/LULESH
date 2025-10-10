@@ -3,48 +3,51 @@
 
 /// ANNOTATE
 
-void wrap_approx(void (*func)(void *data), void *data, ApproxConfig config) {
+void wrap_approx(void (*func)(void *data), void *data, ApproxConfig *config) {
   double *input;
   double *output;
-
-  if (config.collect || config.infer) {
-    int N = config.get_N(data);
-    input = (double*) malloc(sizeof(double) * N * config.input_dim);
-    output = (double*) malloc(sizeof(double) * N * config.output_dim);
-    config.fill_input(data, input);
+  bool do_collect = config->collect && config->funcall_counter % config->collect_every == 0;
+  if (do_collect || config->infer) {
+    int N = config->get_N(data);
+    input = (double*) malloc(sizeof(double) * N * config->input_dim);
+    output = (double*) malloc(sizeof(double) * N * config->output_dim);
+    config->fill_input(data, input);
   }
 
-  if (config.collect) {
-    int N = config.get_N(data);
-    int n_input = config.input_dim;
-    int n_output = config.output_dim;
+  if (do_collect) {
+    printf("Collecting %d\n", config->funcall_counter);
+    int N = config->get_N(data);
+    int n_input = config->input_dim;
+    int n_output = config->output_dim;
 
 #pragma approx declare tensor_functor(identity_map_2d: [i,j] = ([i,j]))
 #pragma approx declare tensor(inp: identity_map_2d(input[0:N, 0:n_input]))
-#pragma approx ml(offline) in(inp) out(identity_map_2d(output[0:N, 0:n_output])) label(config.name)
+#pragma approx ml(offline) in(inp) out(identity_map_2d(output[0:N, 0:n_output])) label(config->name)
     {
       func(data);
-      config.fill_output(data, output);
+      config->fill_output(data, output);
     }
     free(output);
     free(input);
-  } else if (config.infer) {
-    int N = config.get_N(data);
-    int n_input = config.input_dim;
-    int n_output = config.output_dim;
+  } else if (config->infer) {
+    int N = config->get_N(data);
+    int n_input = config->input_dim;
+    int n_output = config->output_dim;
 
 #pragma approx declare tensor_functor(identity_map_2d: [i,j] = ([i,j]))
 #pragma approx declare tensor(inp: identity_map_2d(input[0:N, 0:n_input]))
-#pragma approx ml(infer) in(inp) out(identity_map_2d(output[0:N, 0:n_output])) label(config.name) model(config.model_path)
+#pragma approx ml(infer) in(inp) out(identity_map_2d(output[0:N, 0:n_output])) label(config->name) model(config->model_path)
     {
       func(data);
-      config.apply_output(data, output);
+      config->apply_output(data, output);
     }
     free(output);
     free(input);
   } else {
     func(data);
   }
+
+  config->funcall_counter += 1;
 }
 
 // Helpers
@@ -159,6 +162,8 @@ void apply_output_force(Domain& domain, double *output) {
 ApproxConfig Config_CalcForceForNodes = {
   .name = "CalcForceForNodes",
   .model_path = "calc_force.pt",
+  .db_path = "Force.h5",
+  .collect_every = 100,
   #ifdef COLLECT_FORCE
   .collect = true,
   #else
@@ -178,5 +183,6 @@ ApproxConfig Config_CalcForceForNodes = {
 
   .fill_input = APPROX_IO_CAST(fill_input_node),
   .fill_output =  APPROX_IO_CAST(fill_output_force),
-  .apply_output = APPROX_IO_CAST(apply_output_force)
+  .apply_output = APPROX_IO_CAST(apply_output_force),
+  .funcall_counter = 0
 };

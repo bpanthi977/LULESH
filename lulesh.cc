@@ -1406,7 +1406,7 @@ void LagrangeNodal(Domain& domain)
    * acceleration boundary conditions. */
 
   profileStart(TH_calcForceForNodes);
-  wrap_approx(APPROX_FN_CAST(CalcForceForNodes), &domain, Config_CalcForceForNodes);
+  wrap_approx(APPROX_FN_CAST(CalcForceForNodes), &domain, &Config_CalcForceForNodes);
   profileStop(TH_calcForceForNodes);
 
 #if USE_MPI  
