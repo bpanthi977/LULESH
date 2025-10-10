@@ -133,7 +133,6 @@ void fill_input_node(Domain& domain, double* _input) {
     setNodeValues(domain, i, &input[i].main_node);
   }
 
-#pragma omp parallel for
   for (int elem_i=0; elem_i<domain.m_numElem; elem_i++) { // elements
     for (int j=0; j<8; j++) { // nodes of the element i
       int node_j = domain.nodelist(elem_i)[j];
