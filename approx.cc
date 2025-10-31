@@ -156,7 +156,7 @@ void fill_output_force(Domain &domain, double *output) {
 
 void apply_output_force(Domain& domain, double *output) {
   std::vector<Real_t> vectors[3] = {domain.m_fx, domain.m_fy, domain.m_fz};
-  fill_output(output, vectors, domain.m_numNode, 3);
+  apply_output(output, vectors, domain.m_numNode, 3);
 }
 
 ApproxConfig Config_CalcForceForNodes = {
