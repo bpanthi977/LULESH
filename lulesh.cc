@@ -1169,9 +1169,9 @@ void CalcHourglassControlForElems(Domain& domain,
    }
 
 #if defined(EVD_COLLECT) || defined(EVD_INFER)
-#pragma approx declare tensor_functor(i3_map: [i, _] = ([i, _], [i, _], [i, _]))
+#pragma approx declare tensor_functor(i3_map: [i, j, _] = ([i, j], [i, j], [i, j]))
 #pragma approx declare tensor(input: i3_map(x8n[0:numElem][0:8], y8n[0:numElem][0:8], z8n[0:numElem][0:8]))
-#pragma approx declare tensor_functor(i1_map: [i, _] = ([i, _]))
+#pragma approx declare tensor_functor(i1_map: [i, j] = ([i, j]))
 
      Real_t *out = Allocate<Real_t>(numElem8 * 3);
 #ifdef EVD_COLLECT
