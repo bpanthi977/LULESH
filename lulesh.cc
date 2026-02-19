@@ -894,7 +894,7 @@ void CalcFBHourglassForceForElems( Domain &domain,
   #pragma approx ml(offline) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF")
 #endif
 #ifdef HGF_INFER
-  #pragma approx ml(infer) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF")
+#pragma approx ml(infer) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF") model("/mnt/SharedOne/bpanthi/bridges2/hgf-20p-split-tune/20250826-211554-eYDk/model.pt")
 #endif
 #endif
    {
@@ -1169,7 +1169,7 @@ void CalcHourglassControlForElems(Domain& domain,
    }
 
 #if defined(EVD_COLLECT) || defined(EVD_INFER)
-#pragma approx declare tensor_functor(i3_map: [i, j, _] = ([i, j], [i, j], [i, j]))
+#pragma approx declare tensor_functor(i3_map: [i, j] = ([i, j], [i, j], [i, j]))
 #pragma approx declare tensor(input: i3_map(x8n[0:numElem][0:8], y8n[0:numElem][0:8], z8n[0:numElem][0:8]))
 #pragma approx declare tensor_functor(i1_map: [i, j] = ([i, j]))
 
@@ -1191,7 +1191,7 @@ void CalcHourglassControlForElems(Domain& domain,
 #endif
 
 #ifdef EVD_INFER
-#pragma approx ml(infer) in(input) out(i1_map(out[0:numElem][0:24])) label("EVD")
+   #pragma approx ml(infer) in(evd_input) out(evd_i1_map(out[0:numElem][0:24])) label("EVD") model("/mnt/SharedOne/bpanthi/model_search/logs/evd-plha/20260218-105854-ysJr/model.pt")
    {
    }
 #pragma omp parallel for
