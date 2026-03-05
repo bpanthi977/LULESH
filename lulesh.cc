@@ -2947,9 +2947,17 @@ int main(int argc, char *argv[])
 //      std::cout << "region" << i + 1<< "size" << locDom->regElemSize(i) <<std::endl;
    profileStart(TH_loop);
 #ifdef E_ALL
-   FILE *f = fopen("Energy.bin", "wb");
+   bool dump_all = true;
+   const char* env_dump_type = std::getenv("ENERGY_DUMP_TYPE");
+   if (env_dump_type && strcmp(env_dump_type, "last") == 0) {
+       dump_all = false;
+   }
+
+   const char* env_filename = std::getenv("ENERGY_DUMP_FILE_NAME");
+   const char* filename = env_filename ? env_filename : "Energy.bin";
+   FILE *f = fopen(filename, "wb");
    if (!f) {
-    printf("Couldn't open file (Energy.bin) to save energy values\n");
+    printf("Couldn't open file (%s) to save energy values\n", filename);
     exit(1);
    }
 #endif
@@ -2963,8 +2971,10 @@ int main(int argc, char *argv[])
       profileStop(TH_timestep);
 
 #ifdef E_ALL
-      int n_dims[3] = {opts.nx, opts.nx, opts.nx};
-      WriteArrayToFile(f, locDom->m_e.data(), n_dims, 3);
+      if (dump_all) {
+         int n_dims[3] = {opts.nx, opts.nx, opts.nx};
+         WriteArrayToFile(f, locDom->m_e.data(), n_dims, 3);
+      }
 #endif
 
       if ((opts.showProg != 0) && (opts.quiet == 0) && (myRank == 0)) {
@@ -2978,6 +2988,10 @@ int main(int argc, char *argv[])
    profileStop(TH_loop);
 
 #ifdef E_ALL
+   if (!dump_all) {
+      int n_dims[3] = {opts.nx, opts.nx, opts.nx};
+      WriteArrayToFile(f, locDom->m_e.data(), n_dims, 3);
+   }
    fclose(f);
 #endif
    // Use reduced max elapsed time
