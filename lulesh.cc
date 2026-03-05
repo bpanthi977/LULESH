@@ -894,7 +894,7 @@ void CalcFBHourglassForceForElems( Domain &domain,
   #pragma approx ml(offline) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF")
 #endif
 #ifdef HGF_INFER
-#pragma approx ml(infer) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF") model("/mnt/SharedOne/bpanthi/bridges2/hgf-20p-split-tune/20250826-211554-eYDk/model.pt")
+#pragma approx ml(infer) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF") model(HGF_MODEL_PATH)
 #endif
 #endif
    {
@@ -1195,7 +1195,7 @@ void CalcHourglassControlForElems(Domain& domain,
 #endif
 
 #ifdef EVD_INFER
-   #pragma approx ml(infer) in(evd_input) out(evd_i1_map(out[0:numElem][0:24])) label("EVD") model("/mnt/SharedOne/bpanthi/model_search/logs/evd-plha/20260218-105854-ysJr/model.pt")
+#pragma approx ml(infer) in(input) out(i1_map(out[0:numElem][0:24])) label("EVD") model(EVD_MODEL_PATH)
    {
    }
 #pragma omp parallel for
