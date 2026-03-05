@@ -1119,6 +1119,7 @@ void CalcFBHourglassForceForElems( Domain &domain,
 
 /******************************************/
 
+int evd_collect_counter = 0;
 static inline
 void CalcHourglassControlForElems(Domain& domain,
                                   Real_t determ[], Real_t hgcoef)
@@ -1185,9 +1186,12 @@ void CalcHourglassControlForElems(Domain& domain,
        out[ii3 + 16 + j] = dvdz[jj1];
      }
    }
-   #pragma approx ml(offline) in(input) out(i1_map(out[0:numElem][0:24])) label("EVD")
-   {
+   if (evd_collect_counter % EVD_COLLECT_ITERS == 0) {
+#pragma approx ml(offline) in(input) out(i1_map(out[0:numElem][0:24])) label("EVD")
+     {
+     }
    }
+   evd_collect_counter += 1;
 #endif
 
 #ifdef EVD_INFER
@@ -2905,7 +2909,7 @@ int main(int argc, char *argv[])
       std::cout << "To write an output file for VisIt, use -v\n";
       std::cout << "See help (-h) for more options\n\n";
    }
-
+   evd_collect_counter = 0;
    // Set up the mesh and decompose. Assumes regular cubes for now
    Int_t col, row, plane, side;
    InitMeshDecomp(numRanks, myRank, &col, &row, &plane, &side);
