@@ -1195,7 +1195,7 @@ void CalcHourglassControlForElems(Domain& domain,
 #endif
 
 #ifdef EVD_INFER
-#pragma approx ml(infer) in(input) out(i1_map(out[0:numElem][0:24])) label("EVD") model(EVD_MODEL_PATH)
+#pragma approx ml(infer) in(input) out(i1_map(out[0:numElem][0:24])) label("EVD")
    {
    }
 #pragma omp parallel for
