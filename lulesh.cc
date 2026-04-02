@@ -768,6 +768,7 @@ typedef struct {
      Real_t z;
 } XYZ;
 
+int hgf_collect_counter;
 static inline
 void CalcFBHourglassForceForElems( Domain &domain,
                                    Real_t *determ,
@@ -890,11 +891,8 @@ void CalcFBHourglassForceForElems( Domain &domain,
  coeff [0:N],                                    \
  determ[0:N]))
    Real_t *forces = (Real_t*) f_elem;
-#ifdef HGF_COLLECT
-  #pragma approx ml(offline) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF")
-#endif
 #ifdef HGF_INFER
-#pragma approx ml(infer) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF") model(HGF_MODEL_PATH)
+#pragma approx ml(infer) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF")
 #endif
 #endif
    {
@@ -1086,6 +1084,16 @@ void CalcFBHourglassForceForElems( Domain &domain,
       }
    }
    }
+
+#ifdef HGF_COLLECT
+   if (hgf_collect_counter % HGF_COLLECT_ITERS == 0) {
+#pragma approx ml(offline) in(input) out(outmap(forces[0:N][0:8*3])) label("HGF")
+     {
+     }
+   }
+   hgf_collect_counter++;
+#endif
+
 
    if (numthreads > 1) {
      // Collect the data from the local arrays into the final force arrays
